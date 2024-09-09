@@ -1,0 +1,29 @@
+import com.jcraft.jsch.*;
+
+public class SSHConnection {
+    public static void main(String[] args) {
+        String host = "your-unix-host";
+        String user = "your-username";
+        String password = "your-password";
+        int port = 22;
+
+        try {
+            JSch jsch = new JSch();
+            Session session = jsch.getSession(user, host, port);
+            session.setPassword(password);
+            
+            // Avoid asking for key confirmation
+            session.setConfig("StrictHostKeyChecking", "no");
+            
+            session.connect(); // Connect to Unix server
+            System.out.println("Connected to Unix");
+
+            // Execute Unix commands here (you can use channelExec for executing commands)
+            // Disconnect session
+            session.disconnect();
+            System.out.println("Disconnected from Unix");
+        } catch (JSchException e) {
+            e.printStackTrace();
+        }
+    }
+}
