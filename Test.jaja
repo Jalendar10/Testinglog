@@ -1,79 +1,101 @@
 import com.jcraft.jsch.*;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.io.*;
+import java.net.InetSocketAddress;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
-public class SSHConnection {
-    public static void main(String[] args) {
-        String host = "your-unix-host";
-        String user = "your-username";
-        String password = "your-password";
-        int port = 22;
+public class SSHHttpServer {
+    
+    public static void main(String[] args) throws Exception {
+        // Create HTTP server listening on port 8000
+        HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
+        server.createContext("/", new CommandHandler()); // Create context for HTTP requests
+        server.setExecutor(null); // Default executor
+        server.start(); // Start the server
+        System.out.println("Server started on port 8000");
+    }
 
-        try {
-            JSch jsch = new JSch();
-            Session session = jsch.getSession(user, host, port);
-            session.setPassword(password);
-
-            // Avoid asking for key confirmation
-            session.setConfig("StrictHostKeyChecking", "no");
-
-            session.connect(); // Connect to Unix server
-            System.out.println("Connected to Unix");
-
-            // Open a shell channel for interactive command execution
-            ChannelShell channelShell = (ChannelShell) session.openChannel("shell");
-
-            // Get input/output streams for interaction
-            OutputStream outputStream = channelShell.getOutputStream();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(channelShell.getInputStream()));
-
-            // Connect to shell
-            channelShell.connect();
-            
-            // Create a thread to read the command output
-            new Thread(() -> {
-                try {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        System.out.println(line);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
+    static class CommandHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                // Serve the HTML form when the page is accessed
+                String htmlForm = "<html><body>"
+                        + "<h2>Enter SSH Command</h2>"
+                        + "<form method='POST'>"
+                        + "Command: <input type='text' name='command' size='50'>"
+                        + "<input type='submit' value='Execute'>"
+                        + "</form>"
+                        + "</body></html>";
+                exchange.sendResponseHeaders(200, htmlForm.length());
+                OutputStream os = exchange.getResponseBody();
+                os.write(htmlForm.getBytes());
+                os.close();
+            } else if ("POST".equals(exchange.getRequestMethod())) {
+                // Get the command from the POST request
+                InputStreamReader isr = new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8);
+                BufferedReader br = new BufferedReader(isr);
+                StringBuilder commandBuilder = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    commandBuilder.append(line);
                 }
-            }).start();
+                String command = commandBuilder.toString().split("=")[1]; // Get the command value
+                command = java.net.URLDecoder.decode(command, StandardCharsets.UTF_8); // Decode command
 
-            // Send commands to the shell
-            outputStream.write(("dzdo su - compadmin\n").getBytes());
-            outputStream.flush();
+                // Execute SSH command and get the result
+                String result = executeSSHCommand(command);
 
-            // Optionally wait for a prompt, depending on the remote system's response
-            Thread.sleep(2000); // Adjust as needed
+                // Display result
+                String response = "<html><body><h3>Command Output:</h3><pre>" + result + "</pre></body></html>";
+                exchange.sendResponseHeaders(200, response.length());
+                OutputStream os = exchange.getResponseBody();
+                os.write(response.getBytes());
+                os.close();
+            }
+        }
 
-            // Take user input from the console
-            Scanner scanner = new Scanner(System.in);
-            while (true) {
-                System.out.print("Enter command to execute: ");
-                String command = scanner.nextLine();
-                if (command.equalsIgnoreCase("exit")) {
-                    break;
+        // Function to execute SSH command
+        private String executeSSHCommand(String command) {
+            String host = "your-unix-host";
+            String user = "your-username";
+            String password = "your-password";
+            int port = 22;
+            StringBuilder result = new StringBuilder();
+
+            try {
+                JSch jsch = new JSch();
+                Session session = jsch.getSession(user, host, port);
+                session.setPassword(password);
+
+                // Avoid asking for key confirmation
+                session.setConfig("StrictHostKeyChecking", "no");
+
+                session.connect(); // Connect to Unix server
+
+                // Open a shell channel for interactive command execution
+                ChannelExec channelExec = (ChannelExec) session.openChannel("exec");
+                channelExec.setCommand(command); // Execute the command passed from the webpage
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(channelExec.getInputStream()));
+                channelExec.connect();
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    result.append(line).append("\n");
                 }
-                outputStream.write((command + "\n").getBytes());
-                outputStream.flush();
+
+                channelExec.disconnect();
+                session.disconnect();
+            } catch (Exception e) {
+                e.printStackTrace();
+                result.append("Error: ").append(e.getMessage());
             }
 
-            // Close the output stream when done
-            outputStream.close();
-
-            // Disconnect the shell and session
-            channelShell.disconnect();
-            session.disconnect();
-            System.out.println("Disconnected from Unix");
-
-        } catch (Exception e) {
-            e.printStackTrace();
+            return result.toString();
         }
     }
 }
