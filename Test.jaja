@@ -1,5 +1,9 @@
 import com.jcraft.jsch.*;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.Scanner;
+
 public class SSHConnection {
     public static void main(String[] args) {
         String host = "your-unix-host";
@@ -11,18 +15,49 @@ public class SSHConnection {
             JSch jsch = new JSch();
             Session session = jsch.getSession(user, host, port);
             session.setPassword(password);
-            
+
             // Avoid asking for key confirmation
             session.setConfig("StrictHostKeyChecking", "no");
-            
+
             session.connect(); // Connect to Unix server
             System.out.println("Connected to Unix");
 
-            // Execute Unix commands here (you can use channelExec for executing commands)
-            // Disconnect session
+            // Scanner to take input from user
+            Scanner scanner = new Scanner(System.in);
+
+            boolean keepRunning = true;
+            while (keepRunning) {
+                System.out.println("Enter a command to execute on Unix (type 'exit' to stop): ");
+                String command = scanner.nextLine();
+
+                // If user types 'exit', disconnect and stop
+                if (command.equalsIgnoreCase("exit")) {
+                    keepRunning = false;
+                    break;
+                }
+
+                // Execute the Unix command using ChannelExec
+                ChannelExec channelExec = (ChannelExec) session.openChannel("exec");
+                channelExec.setCommand(command);
+
+                // Get the input stream to capture the output of the command
+                BufferedReader reader = new BufferedReader(new InputStreamReader(channelExec.getInputStream()));
+                channelExec.connect(); // Execute the command
+
+                // Print the command output
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println(line);
+                }
+
+                // Close the channel after the command execution
+                channelExec.disconnect();
+            }
+
+            // Disconnect session after all commands are executed
             session.disconnect();
             System.out.println("Disconnected from Unix");
-        } catch (JSchException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
