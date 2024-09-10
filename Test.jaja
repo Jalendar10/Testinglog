@@ -2,8 +2,7 @@ import com.jcraft.jsch.*;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.InputStream;
-import java.util.Scanner;
+import java.io.OutputStream;
 
 public class SSHConnection {
     public static void main(String[] args) {
@@ -23,48 +22,29 @@ public class SSHConnection {
             session.connect(); // Connect to Unix server
             System.out.println("Connected to Unix");
 
-            // Scanner to take input from user
-            Scanner scanner = new Scanner(System.in);
+            // Execute a command on Unix server
+            ChannelExec channelExec = (ChannelExec) session.openChannel("exec");
 
-            boolean keepRunning = true;
-            while (keepRunning) {
-                System.out.println("Enter a command to execute on Unix (type 'exit' to stop): ");
-                String command = scanner.nextLine();
+            // Set the command you want to run
+            String command = "your-command-here";  // e.g., "ls -l /home/your-directory"
+            channelExec.setCommand(command);
 
-                // If user types 'exit', disconnect and stop
-                if (command.equalsIgnoreCase("exit")) {
-                    keepRunning = false;
-                    break;
-                }
+            // Get the input stream to read the command's output
+            BufferedReader reader = new BufferedReader(new InputStreamReader(channelExec.getInputStream()));
+            channelExec.connect(); // Execute command
 
-                // Execute the Unix command using ChannelExec
-                ChannelExec channelExec = (ChannelExec) session.openChannel("exec");
-                channelExec.setCommand(command);
-
-                // Set up streams to capture both output and error streams
-                InputStream input = channelExec.getInputStream();
-                InputStream err = channelExec.getErrStream();
-
-                channelExec.connect(); // Execute the command
-
-                // Read standard output
-                BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println(line);  // Print output to console
-                }
-
-                // Read standard error (if any)
-                BufferedReader errorReader = new BufferedReader(new InputStreamReader(err));
-                while ((line = errorReader.readLine()) != null) {
-                    System.out.println("Error: " + line);  // Print errors to console
-                }
-
-                // Wait for command to complete and disconnect
-                channelExec.disconnect();
+            // Print command output
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
             }
 
-            // Disconnect session after all commands are executed
+            // Wait for the command to finish
+            channelExec.disconnect();
+
+            System.out.println("Command execution finished.");
+
+            // Disconnect session when your tasks are done
             session.disconnect();
             System.out.println("Disconnected from Unix");
         } catch (Exception e) {
